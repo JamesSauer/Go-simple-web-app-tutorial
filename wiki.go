@@ -6,7 +6,20 @@ import (
 	"net/http"
 	"html/template"
 	"log"
+	"regexp"
+	"errors"
 )
+
+var validPaths = regexp.MustCompile("^/(view|edit|save)/([a-zA-Z0-9]+)$")
+
+func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
+	match := validPaths.FindStringSubmatch(r.URL.Path)
+	if match == nil {
+		http.NotFound(w, r)
+		return "", errors.New("Invalid page title")
+	}
+	return match[2], nil
+}
 
 type Page struct {
 	Title string
@@ -27,13 +40,21 @@ func loadPage(title string) (*Page, error) {
 	return &Page{Title: title, Body: body}, nil
 }
 
+var templates = template.Must(template.ParseFiles("templates/view.html", "templates/edit.html"))
+
 func renderTemplate(w http.ResponseWriter, templateName string, p *Page) {
-	t, _ := template.ParseFiles("templates/" + templateName + ".html")
-	t.Execute(w, p)
+	err := templates.ExecuteTemplate(w, templateName+".html",p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/view/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	page, err := loadPage(title)
 	if err != nil {
 		http.Redirect(w, r, "/edit/"+title, http.StatusFound)
@@ -43,7 +64,10 @@ func viewHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/edit/"):]
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
 	page, err := loadPage(title)
 	if err != nil {
 		page = &Page{Title: title}
@@ -52,10 +76,17 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request) {
-	title := r.URL.Path[len("/save/"):]
-	body := r.FormValue("body")
-	page := &Page{Title: title, Body: []byte(body)}
-	page.save()
+	title, err := getTitle(w, r)
+	if err != nil {
+		return
+	}
+	body  := r.FormValue("body")
+	page  := &Page{Title: title, Body: []byte(body)}
+	err   = page.save()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
