@@ -1,0 +1,1 @@
+This is the result of following [https://golang.org/doc/articles/wiki/](this introductory tutorial) for building basic web applications with Go.
